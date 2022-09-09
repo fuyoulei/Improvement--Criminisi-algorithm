@@ -1,0 +1,111 @@
+function [Psnr,inpaintedImg] =RGB_Criminisi(imagepath,maskpath,fillColor)
+ 
+%Criminisi algorithm restores colour images（Criminisi算法修复彩色图像）
+ 
+ 
+img0=imagepath;
+fillImg=maskpath;
+ 
+img = double(fillImg);%Image to be restored（要修复的图像）
+fillRegion=img(:,:,1)==fillColor(1)&img(:,:,2)==fillColor(2)&img(:,:,3)==fillColor(3);
+ 
+origImg = img;
+ind = img2ind(img);
+%------------------------------------------------------
+in=ind;
+[A,BB]=find(in);               %Get the coordinates of each point（得到每个点的坐标）
+%-----------------------------------------------------
+sz = [size(img,1) size(img,2)];
+z1=size(img,1);
+z2=size(img,2);
+sourceRegion = ~fillRegion;
+ 
+ 
+% Calculate  iso-illumination line values（求等照度线值）
+[Ix(:,:,3),Iy(:,:,3)] = gradient(img(:,:,3));
+[Ix(:,:,2),Iy(:,:,2)] = gradient(img(:,:,2));
+[Ix(:,:,1),Iy(:,:,1)] = gradient(img(:,:,1));
+Ix = sum(Ix,3)/(3*255); Iy = sum(Iy,3)/(3*255);
+temp = Ix; Ix = -Iy; Iy = temp;  % Rotate 90 degrees（旋转90度）
+ 
+%------------------------------------------------------------------------
+%Calculate the gradient values（求得梯度值）
+[ix(:,:,3),iy(:,:,3)] = gradient(img(:,:,3));
+[ix(:,:,2),iy(:,:,2)] = gradient(img(:,:,2));
+[ix(:,:,1),iy(:,:,1)] = gradient(img(:,:,1));
+ix = sum(ix,3)/(3*255); iy = sum(iy,3)/(3*255);
+%------------------------------------------------------------------------
+ 
+ % Initialize confidence term C and data term D values（初始化置信度项C和数据项D值）
+C = double(sourceRegion);
+D = repmat(-.1,sz);
+ 
+ 
+% Restoration-Until all the damaged areas have been repaired（修复-直到所有的破损区域都被修复完成）
+while any(fillRegion(:))
+%Finding the edge（寻找边缘） 
+dR=find(conv2(double(fillRegion),[1,1,1;1,-8,1;1,1,1],‘same’)>0); 
+% Calculating confidence term values（计算置信度项值） C(p) 
+for k=dR’ 
+Hp=qukuai_9(sz,k); 
+q=Hp(～(fillRegion(Hp))); 
+C(k)=sum(C(q))/numel(Hp); 
+end 
+%------------------------------------------------------------------------
+
+%Calculating the curvature of the iso-illumination line（计算等照度线曲率） K(p) 
+[ixy,iyy]=gradient(iy); 
+[ixx,ixy1]=gradient(ix); 
+Idown(dR)=(ix(dR).*ix(dR)+iy(dR).*iy(dR)).^1.5; 
+Iup(dR)=(iy(dR).*iy(dR).*ixx(dR)-2*ix(dR).*ixy(dR).*iy(dR)+ix(dR).*ix(dR).*iyy(dR)); 
+ko(dR)=abs(Iup(dR)./Idown(dR)); 
+L(dR)=abs(ixx(dR)+iyy(dR));%Calculating the smoothing term（计算平滑项）L(p) 
+D(dR)=abs(Ix(dR).*N(:,1)+Iy(dR).*N(:,2))+0.001; %Calculated data items（计算数据项）D(p) 
+%------------------------------------------------------------------------
+
+  lamda=n/N+gamma;%（计算动态调整因子λ）计算动态调整因子λ 
+  priorities=C(dR).^alpha+(beta-lamda)*(D(dR)+(1./ko(dR))+L(dR)); %Calculating priority（计算优先权）P(p) 
+  %Find the block with the highest priority（找到优先权最大的块）Hp 
+  [unused,ndx]=max(priorities(:)); p=dR(ndx(1)); 
+  [Hp,rows,cols]=qukuai_9(sz,p); toFill=fillRegion(Hp); 
+  Wpatch=img(rows,cols,:);%Get the block to be repaired（得到待修复块）
+  
+  %------------------------------------------------------------------------
+  % Use global search to find the best matching block(采用全局搜索，寻找最佳匹配块) 
+   Hq=whole_match(z1,z2,img,Wpatch,fillColor);
+  %------------------------------------------------------------------------
+  
+  %Update fill area (更新填充区域)
+  fillRegion(Hp(toFill)) = false;
+  
+  % Update C(p) values and iso-illumination line values(更新C(p)值和等照度线值)
+  C(Hp(toFill))  = C(p);
+  Ix(Hp(toFill)) = Ix(Hq(toFill));
+  Iy(Hp(toFill)) = Iy(Hq(toFill));
+  
+  %-----------------------------------------------------------------------
+  %Update gradient values(更新梯度值)
+  ix(Hp(toFill)) = ix(Hq(toFill));
+  iy(Hp(toFill)) = iy(Hq(toFill));
+  %----------------------------------------------------------------------
+    
+  % Copy image information from Hq to Hp(从Hq复制图像信息到Hp)
+  ind(Hp(toFill)) = ind(Hq(toFill));
+  img(rows,cols,:) = ind2img(ind(rows,cols),origImg);  
+ 
+end
+ 
+inpaintedImg=img;
+ 
+A=double(img0);
+B=double(inpaintedImg);
+ 
+Psnr=PSNR(A,B);
+inpaintedImg=uint8(inpaintedImg);
+figure;imshow(inpaintedImg); title('Criminisi Algorithm restoration results');
+ 
+ 
+
+
+
+
